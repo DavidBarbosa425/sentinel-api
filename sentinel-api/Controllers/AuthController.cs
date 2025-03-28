@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using sentinel_api.Models;
+using sentinel_api.Services;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -15,14 +16,17 @@ namespace sentinel_api.Controllers
         private readonly UserManager<User> _userManager;
         private readonly SignInManager<User> _signInManager;
         private readonly IConfiguration _configuration;
+        private readonly EmailService _emailService;
 
         public AuthController(UserManager<User> userManager,
                                SignInManager<User> signInManager,
-                               IConfiguration configuration)
+                               IConfiguration configuration,
+                               EmailService emailService)
         {
             _userManager = userManager;
             _signInManager = signInManager;
             _configuration = configuration;
+            _emailService = emailService;
         }
 
         // Endpoint de Registro
@@ -42,6 +46,8 @@ namespace sentinel_api.Controllers
 
             // Cria o link de confirmação (modifique a URL conforme necessário)
             var confirmationLink = $"{Request.Scheme}://{Request.Host}/api/auth/confirm-email?email={user.Email}&token={Uri.EscapeDataString(token)}";
+
+            _emailService.SendEmailAsync(model.Email, "confirmação de e-mail", $"Clique no link para confirmar seu e-mail: <a href='{confirmationLink}'>Confirmar</a>");
 
             // Enviar e-mail (aqui um serviço de e-mail real seria usado)
             Console.WriteLine($"Clique no link para confirmar o e-mail: {confirmationLink}");
