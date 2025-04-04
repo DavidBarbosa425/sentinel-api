@@ -21,16 +21,18 @@ builder.Services.AddSwaggerGen();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
-builder.Services.AddScoped<EmailService>();
+builder.Services.AddTransient<EmailService>();
 
 var app = builder.Build();
-
-//await SeedService.SeedDataBase(app.Services);
 
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
-    app.UseSwaggerUI();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "API v1");
+        c.RoutePrefix = string.Empty; 
+    });
 }
 
 // Configure the HTTP request pipeline.

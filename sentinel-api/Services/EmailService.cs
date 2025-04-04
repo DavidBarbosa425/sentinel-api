@@ -1,5 +1,5 @@
-﻿using System.Net.Mail;
-using System.Net;
+﻿using MailKit.Net.Smtp;
+using MimeKit;
 
 namespace sentinel_api.Services
 {
@@ -12,25 +12,28 @@ namespace sentinel_api.Services
             _configuration = configuration;
         }
 
+        private readonly string _smtpServer = "smtp-relay.brevo.com"; 
+        private readonly int _port = 587; 
+        private readonly string _username = "898a10001@smtp-brevo.com";
+        private readonly string _password = " ";
+
         public async Task SendEmailAsync(string toEmail, string subject, string message)
         {
-            var smtpClient = new SmtpClient(_configuration["Email:SmtpServer"])
-            {
-                Port = int.Parse(_configuration["Email:SmtpPort"]),
-                Credentials = new NetworkCredential(_configuration["Email:Username"], _configuration["Email:Password"]),
-                EnableSsl = true,
-            };
+            var emailMessage = new MimeMessage();
+            emailMessage.From.Add(new MailboxAddress("Sentinel", "carolinearagao96@gmail.com"));
+            emailMessage.To.Add(new MailboxAddress("", toEmail));
+            emailMessage.Subject = subject;
+            emailMessage.Body = new TextPart("html") { Text = message };
 
-            var mailMessage = new MailMessage
+            using (var client = new SmtpClient())
             {
-                From = new MailAddress(_configuration["Email:From"]),
-                Subject = subject,
-                Body = message,
-                IsBodyHtml = true,
-            };
-            mailMessage.To.Add(toEmail);
-
-            await smtpClient.SendMailAsync(mailMessage);
+                await client.ConnectAsync(_smtpServer, _port, false);
+                await client.AuthenticateAsync(_username, _password);
+                var teste = await client.SendAsync(emailMessage);
+                await client.DisconnectAsync(true);
+            }
         }
     }
 }
+
+

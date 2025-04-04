@@ -1,11 +1,12 @@
-﻿using Microsoft.AspNetCore.Identity;
+﻿using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
+using System.Web;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using sentinel_api.Models;
 using sentinel_api.Services;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Text;
 
 namespace sentinel_api.Controllers
 {
@@ -29,7 +30,6 @@ namespace sentinel_api.Controllers
             _emailService = emailService;
         }
 
-        // Endpoint de Registro
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] Register model)
         {
@@ -41,16 +41,13 @@ namespace sentinel_api.Controllers
                 return BadRequest(result.Errors);
             }
 
-            // Gera um token de confirmação de e-mail
             var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+            var tokenEncoded = HttpUtility.UrlEncode(token);
 
-            // Cria o link de confirmação (modifique a URL conforme necessário)
-            var confirmationLink = $"{Request.Scheme}://{Request.Host}/api/auth/confirm-email?email={user.Email}&token={Uri.EscapeDataString(token)}";
+            var confirmationLink = 
+                $"{Request.Scheme}://{Request.Host}/api/auth/confirm-email?email={user.Email}&token={tokenEncoded}";
 
-            _emailService.SendEmailAsync(model.Email, "confirmação de e-mail", $"Clique no link para confirmar seu e-mail: <a href='{confirmationLink}'>Confirmar</a>");
-
-            // Enviar e-mail (aqui um serviço de e-mail real seria usado)
-            Console.WriteLine($"Clique no link para confirmar o e-mail: {confirmationLink}");
+            await _emailService.SendEmailAsync(model.Email, "confirmação de e-mail", $"Clique no link para confirmar seu e-mail: <a href='{confirmationLink}'>Confirmar</a>");
 
             return Ok(new { message = "Usuário registrado! Verifique seu e-mail para confirmar a conta." });
         }
@@ -64,7 +61,10 @@ namespace sentinel_api.Controllers
                 return BadRequest("Usuário não encontrado.");
             }
 
-            var result = await _userManager.ConfirmEmailAsync(user, token);
+            var decodedToken = HttpUtility.UrlDecode(token);
+
+            var result = await _userManager.ConfirmEmailAsync(user, decodedToken);
+
             if (result.Succeeded)
             {
                 return Ok(new { message = "E-mail confirmado com sucesso!" });
@@ -73,7 +73,6 @@ namespace sentinel_api.Controllers
             return BadRequest("Falha ao confirmar o e-mail. O token pode ter expirado.");
         }
 
-        // Endpoint de Login
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] Login model)
         {
