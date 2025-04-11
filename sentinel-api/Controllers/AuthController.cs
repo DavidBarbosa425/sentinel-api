@@ -1,10 +1,11 @@
 ﻿using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-using System.Web;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using sentinel_api.Data;
 using sentinel_api.Models;
 using sentinel_api.Services;
 
@@ -18,16 +19,19 @@ namespace sentinel_api.Controllers
         private readonly SignInManager<User> _signInManager;
         private readonly IConfiguration _configuration;
         private readonly EmailService _emailService;
+        private readonly AppDbContext _context;
 
         public AuthController(UserManager<User> userManager,
                                SignInManager<User> signInManager,
                                IConfiguration configuration,
-                               EmailService emailService)
+                               EmailService emailService,
+                               AppDbContext context)
         {
             _userManager = userManager;
             _signInManager = signInManager;
             _configuration = configuration;
             _emailService = emailService;
+            _context = context;
         }
 
         [HttpPost("register")]
@@ -42,36 +46,50 @@ namespace sentinel_api.Controllers
             }
 
             var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-            var tokenEncoded = HttpUtility.UrlEncode(token);
 
-            var confirmationLink = 
-                $"{Request.Scheme}://{Request.Host}/api/auth/confirm-email?email={user.Email}&token={tokenEncoded}";
+            var tokenEntity = new EmailConfirmToken
+            {
+                UserId = user.Id,
+                Token = token
+            };
 
-            await _emailService.SendEmailAsync(model.Email, "confirmação de e-mail", $"Clique no link para confirmar seu e-mail: <a href='{confirmationLink}'>Confirmar</a>");
+            _context.EmailConfirmTokens.Add(tokenEntity);
+            await _context.SaveChangesAsync();
+
+            var confirmationLink = $"{Request.Scheme}://{Request.Host}/api/auth/confirm-email?id={tokenEntity.Id}";
+
+            var htmlMessage = $@"
+            <p>Olá {user.UserName},</p>
+            <p>Clique no botão abaixo para confirmar seu e-mail:</p>
+            <p><a style='padding: 10px 20px; background-color: #4CAF50; color: white; text-decoration: none;' href='{confirmationLink}'>Confirmar E-mail</a></p>
+            <p>Se você não se registrou, ignore este e-mail.</p>
+             ";
+
+            await _emailService.SendEmailAsync(model.Email, "confirmação de e-mail", htmlMessage);
 
             return Ok(new { message = "Usuário registrado! Verifique seu e-mail para confirmar a conta." });
         }
 
         [HttpGet("confirm-email")]
-        public async Task<IActionResult> ConfirmEmail([FromQuery] string email, [FromQuery] string token)
+        public async Task<IActionResult> ConfirmEmail(Guid id)
         {
-            var user = await _userManager.FindByEmailAsync(email);
+            var tokenEntry = await _context.EmailConfirmTokens
+                .FirstOrDefaultAsync(t => t.Id == id && t.Expiration > DateTime.UtcNow);
+
+            if (tokenEntry == null)
+                return BadRequest("Token inválido ou expirado.");
+
+            var user = await _userManager.FindByIdAsync(tokenEntry.UserId);
             if (user == null)
-            {
                 return BadRequest("Usuário não encontrado.");
-            }
 
-            var decodedToken = HttpUtility.UrlDecode(token);
+            var result = await _userManager.ConfirmEmailAsync(user, tokenEntry.Token);
 
-            var result = await _userManager.ConfirmEmailAsync(user, decodedToken);
+            _context.EmailConfirmTokens.Remove(tokenEntry);
+            await _context.SaveChangesAsync();
 
-            if (result.Succeeded)
-            {
-                return Ok(new { message = "E-mail confirmado com sucesso!" });
-            }
-
-            return BadRequest("Falha ao confirmar o e-mail. O token pode ter expirado.");
-        }
+            return result.Succeeded ? Ok("E-mail confirmado com sucesso!") : BadRequest("Erro ao confirmar e-mail.");
+        }      
 
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] Login model)
